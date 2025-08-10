@@ -5,14 +5,23 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="421e192c-41e7-49b1-9047-f9610fbb26b5" name="Changes" comment="Versao criado pelo init">
+      <change afterPath="$PROJECT_DIR$/UI_BIA/components/data_table.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/UI_BIA/components/sidebar.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/UI_BIA/services/sheets_service.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/UI_BIA/UI_BIA.py" beforeDir="false" afterPath="$PROJECT_DIR$/UI_BIA/UI_BIA.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/rxconfig.py" beforeDir="false" afterPath="$PROJECT_DIR$/rxconfig.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -65,7 +74,23 @@
       <option name="project" value="LOCAL" />
       <updated>1754840798997</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="Versao criado pelo init">
+      <option name="closed" value="true" />
+      <created>1754848259448</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1754848259448</updated>
+    </task>
+    <task id="LOCAL-00004" summary="Versao criado pelo init">
+      <option name="closed" value="true" />
+      <created>1754848266449</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1754848266449</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
