@@ -1,18 +1,25 @@
 import reflex as rx
 import pandas as pd
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 from .services.sheets_service import SheetsService
 from .components.sidebar import create_sidebar
-from .components.data_table import create_data_table
 
 
 class State(rx.State):
     """Estado da aplicação"""
 
-    # DataFrames como strings JSON para serialização
-    biometria_data: list[dict] = []
-    racao_data: list[dict] = []
+    # Dados simplificados para exibição
+    biometria_summary: str = ""
+    racao_summary: str = ""
+
+    # Dados das primeiras linhas para preview
+    biometria_preview: List[List[str]] = []
+    racao_preview: List[List[str]] = []
+
+    # Cabeçalhos das tabelas
+    biometria_headers: List[str] = []
+    racao_headers: List[str] = []
 
     # Estados de carregamento
     is_loading: bool = False
@@ -30,12 +37,46 @@ class State(rx.State):
 
             messages = []
 
+            # Processa dados de Biometria
             if biometria_df is not None and not biometria_df.empty:
-                self.biometria_data = biometria_df.head(50).to_dict('records')
+                self.biometria_headers = [str(col) for col in biometria_df.columns]
+
+                # Pega apenas as primeiras 10 linhas para preview
+                preview_df = biometria_df.head(10)
+                self.biometria_preview = []
+
+                for _, row in preview_df.iterrows():
+                    row_data = []
+                    for value in row.values:
+                        # Converte para string e limita tamanho
+                        str_val = str(value) if pd.notna(value) else ""
+                        if len(str_val) > 20:
+                            str_val = str_val[:20] + "..."
+                        row_data.append(str_val)
+                    self.biometria_preview.append(row_data)
+
+                self.biometria_summary = f"Total de {len(biometria_df)} registros, {len(biometria_df.columns)} colunas"
                 messages.append(f"Biometria: {len(biometria_df)} registros")
 
+            # Processa dados de Ração
             if racao_df is not None and not racao_df.empty:
-                self.racao_data = racao_df.head(50).to_dict('records')
+                self.racao_headers = [str(col) for col in racao_df.columns]
+
+                # Pega apenas as primeiras 10 linhas para preview
+                preview_df = racao_df.head(10)
+                self.racao_preview = []
+
+                for _, row in preview_df.iterrows():
+                    row_data = []
+                    for value in row.values:
+                        # Converte para string e limita tamanho
+                        str_val = str(value) if pd.notna(value) else ""
+                        if len(str_val) > 20:
+                            str_val = str_val[:20] + "..."
+                        row_data.append(str_val)
+                    self.racao_preview.append(row_data)
+
+                self.racao_summary = f"Total de {len(racao_df)} registros, {len(racao_df.columns)} colunas"
                 messages.append(f"Ração: {len(racao_df)} registros")
 
             if messages:
@@ -65,11 +106,16 @@ def index() -> rx.Component:
             rx.vstack(
                 # Cabeçalho
                 rx.hstack(
-                    rx.heading("Aquicultura Analytics Pro", size="8"),
+                    rx.heading("Aquicultura Analytics Pro", size="8", color=rx.color("blue", 9)),
                     rx.spacer(),
                     rx.cond(
                         State.is_loading,
-                        rx.spinner(size="3"),
+                        rx.hstack(
+                            rx.spinner(size="3"),
+                            rx.text("Carregando...", color="gray"),
+                            spacing="2",
+                            align="center"
+                        ),
                     ),
                     width="100%",
                     align="center",
@@ -82,7 +128,8 @@ def index() -> rx.Component:
                     rx.callout(
                         State.load_message,
                         icon="info",
-                        size="1"
+                        size="1",
+                        variant="soft"
                     ),
                 ),
 
@@ -90,26 +137,58 @@ def index() -> rx.Component:
                 rx.cond(
                     ~State.has_data,
                     rx.center(
-                        rx.text(
-                            "Clique em 'Carregar Planilhas' na barra lateral para importar os dados.",
-                            color="gray",
-                            size="4",
-                            text_align="center"
+                        rx.vstack(
+                            rx.icon("database", size=64, color=rx.color("gray", 6)),
+                            rx.heading("Bem-vindo ao Aquicultura Analytics Pro", size="6", color=rx.color("gray", 8)),
+                            rx.text(
+                                "Clique em 'Carregar Planilhas' na barra lateral para importar os dados das planilhas do Google Sheets.",
+                                color="gray",
+                                size="4",
+                                text_align="center",
+                                max_width="400px"
+                            ),
+                            spacing="4",
+                            align="center"
                         ),
-                        height="50vh",
+                        height="60vh",
                         width="100%"
                     ),
                     rx.vstack(
                         # Tabela Biometria
                         rx.cond(
-                            State.biometria_data.length() > 0,
+                            State.biometria_headers.length() > 0,
                             rx.vstack(
-                                rx.heading("Dados de Biometria", size="6"),
-                                rx.data_table(
-                                    data=State.biometria_data,
-                                    pagination=True,
-                                    search=True,
-                                    sort=True,
+                                rx.heading("📊 Dados de Biometria", size="6"),
+                                rx.text(State.biometria_summary, color="gray", size="2"),
+                                rx.box(
+                                    rx.table.root(
+                                        rx.table.header(
+                                            rx.table.row(
+                                                rx.foreach(
+                                                    State.biometria_headers,
+                                                    lambda header: rx.table.column_header_cell(header)
+                                                )
+                                            )
+                                        ),
+                                        rx.table.body(
+                                            rx.foreach(
+                                                State.biometria_preview,
+                                                lambda row: rx.table.row(
+                                                    rx.foreach(
+                                                        row,
+                                                        lambda cell: rx.table.cell(cell)
+                                                    )
+                                                )
+                                            )
+                                        ),
+                                        variant="surface",
+                                        size="1"
+                                    ),
+                                    width="100%",
+                                    overflow_x="auto",
+                                    border="1px solid",
+                                    border_color=rx.color("gray", 4),
+                                    border_radius="8px"
                                 ),
                                 spacing="4",
                                 width="100%"
@@ -118,26 +197,51 @@ def index() -> rx.Component:
 
                         # Tabela Ração
                         rx.cond(
-                            State.racao_data.length() > 0,
+                            State.racao_headers.length() > 0,
                             rx.vstack(
-                                rx.heading("Dados de Ração", size="6"),
-                                rx.data_table(
-                                    data=State.racao_data,
-                                    pagination=True,
-                                    search=True,
-                                    sort=True,
+                                rx.heading("🍽️ Dados de Ração", size="6"),
+                                rx.text(State.racao_summary, color="gray", size="2"),
+                                rx.box(
+                                    rx.table.root(
+                                        rx.table.header(
+                                            rx.table.row(
+                                                rx.foreach(
+                                                    State.racao_headers,
+                                                    lambda header: rx.table.column_header_cell(header)
+                                                )
+                                            )
+                                        ),
+                                        rx.table.body(
+                                            rx.foreach(
+                                                State.racao_preview,
+                                                lambda row: rx.table.row(
+                                                    rx.foreach(
+                                                        row,
+                                                        lambda cell: rx.table.cell(cell)
+                                                    )
+                                                )
+                                            )
+                                        ),
+                                        variant="surface",
+                                        size="1"
+                                    ),
+                                    width="100%",
+                                    overflow_x="auto",
+                                    border="1px solid",
+                                    border_color=rx.color("gray", 4),
+                                    border_radius="8px"
                                 ),
                                 spacing="4",
                                 width="100%"
                             )
                         ),
 
-                        spacing="6",
+                        spacing="8",
                         width="100%"
                     )
                 ),
 
-                spacing="4",
+                spacing="6",
                 width="100%"
             ),
             padding="2rem",

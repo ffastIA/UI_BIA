@@ -1,12 +1,11 @@
 import reflex as rx
-import pandas as pd
-from typing import Optional, List
+from typing import List, Dict
 
 
-def create_data_table(df: Optional[pd.DataFrame], title: str) -> rx.Component:
-    """Cria uma tabela de dados a partir de um DataFrame"""
+def create_data_table(data: List[Dict], columns: List[str], title: str) -> rx.Component:
+    """Cria uma tabela de dados simples"""
 
-    if df is None or df.empty:
+    if not data or not columns:
         return rx.vstack(
             rx.heading(title, size="6"),
             rx.text("Nenhum dado disponível", color="gray"),
@@ -14,22 +13,34 @@ def create_data_table(df: Optional[pd.DataFrame], title: str) -> rx.Component:
             width="100%"
         )
 
-    # Limita a exibição a 50 linhas para performance
-    display_df = df.head(50)
+    # Cabeçalho da tabela
+    header_cells = [rx.table.column_header_cell(col) for col in columns]
 
-    # Converte DataFrame para lista de dicionários
-    data = display_df.to_dict('records')
-    columns = list(display_df.columns)
+    # Linhas da tabela
+    rows = []
+    for row_data in data:
+        cells = []
+        for col in columns:
+            value = row_data.get(col, "")
+            # Converte para string e limita o tamanho
+            cell_value = str(value)[:50] + ("..." if len(str(value)) > 50 else "")
+            cells.append(rx.table.cell(cell_value))
+        rows.append(rx.table.row(*cells))
 
     return rx.vstack(
         rx.heading(title, size="6"),
-        rx.text(f"Exibindo {len(display_df)} de {len(df)} registros", color="gray", size="2"),
-        rx.data_table(
-            data=data,
-            columns=columns,
-            pagination=True,
-            search=True,
-            sort=True,
+        rx.text(f"Exibindo {len(data)} registros", color="gray", size="2"),
+        rx.box(
+            rx.table.root(
+                rx.table.header(
+                    rx.table.row(*header_cells)
+                ),
+                rx.table.body(*rows),
+                variant="surface",
+                size="1"
+            ),
+            width="100%",
+            overflow_x="auto"
         ),
         spacing="4",
         width="100%"
