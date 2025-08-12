@@ -1,7 +1,7 @@
 import reflex as rx
 
 
-def create_sidebar(on_load_data) -> rx.Component:
+def create_sidebar(on_load_data, on_toggle_dashboard) -> rx.Component:
     """Cria a barra lateral com configurações"""
 
     return rx.box(
@@ -58,8 +58,26 @@ def create_sidebar(on_load_data) -> rx.Component:
                     spacing="2",
                     align="center"
                 ),
-                rx.text("Em desenvolvimento", color="gray", size="2", style={"font_style": "italic"}),
-                spacing="2",
+                rx.button(
+                    rx.hstack(
+                        rx.icon("pie_chart", size=16),
+                        rx.text("Dashboard Métricas"),
+                        spacing="2",
+                        align="center"
+                    ),
+                    on_click=on_toggle_dashboard,
+                    variant="outline",
+                    color_scheme="green",
+                    width="100%",
+                    size="2"
+                ),
+                rx.text(
+                    "Métricas e estatísticas dos dados",
+                    color="gray",
+                    size="1",
+                    text_align="center"
+                ),
+                spacing="3",
                 width="100%"
             ),
 
@@ -68,7 +86,7 @@ def create_sidebar(on_load_data) -> rx.Component:
             # Rodapé
             rx.vstack(
                 rx.divider(),
-                rx.text("v1.0.0", color="gray", size="1", text_align="center"),
+                rx.text("v1.1.0", color="gray", size="1", text_align="center"),
                 spacing="2",
                 width="100%"
             ),
