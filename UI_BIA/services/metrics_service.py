@@ -191,32 +191,97 @@ class MetricsService:
             return {}
 
     @staticmethod
-    def calculate_correlation_data(biometry_df: pd.DataFrame, feed_df: pd.DataFrame,
-                                   start_date: str = "", end_date: str = "") -> List[Dict]:
-        """Calcula dados para gráfico de correlação área vs ração por tanque"""
+    def calculate_temporal_correlation(biometry_df: pd.DataFrame, feed_df: pd.DataFrame,
+                                       start_date: str = "", end_date: str = "") -> Dict:
+        """Calcula correlação temporal entre crescimento de área e ração utilizada"""
         try:
-            bio_metrics = MetricsService.calculate_biometry_metrics(biometry_df, start_date, end_date)
-            feed_metrics = MetricsService.calculate_feed_metrics(feed_df, start_date, end_date)
+            # Filtra dados por período
+            if start_date and end_date:
+                biometry_filtered = MetricsService.filter_data_by_date(biometry_df, start_date, end_date)
+                feed_filtered = MetricsService.filter_data_by_date(feed_df, start_date, end_date)
+            else:
+                biometry_filtered = biometry_df.copy()
+                feed_filtered = feed_df.copy()
 
-            if not bio_metrics or not feed_metrics:
-                return []
+            if biometry_filtered.empty or feed_filtered.empty:
+                return {}
 
-            correlation_data = []
+            # Prepara dados de biometria
+            bio_df = biometry_filtered.copy()
+            bio_df['data_parsed'] = bio_df['data'].apply(MetricsService.parse_date)
+            bio_df['area'] = pd.to_numeric(bio_df['largura'], errors='coerce') * pd.to_numeric(bio_df['altura'],
+                                                                                               errors='coerce')
+            bio_df = bio_df.dropna(subset=['data_parsed', 'area'])
 
-            # Combina dados por tanque
-            for tanque in bio_metrics.get('por_tanque', {}):
-                if tanque in feed_metrics.get('por_tanque', {}):
-                    area_media = bio_metrics['por_tanque'][tanque]['area_media']
-                    racao_utilizada = feed_metrics['por_tanque'][tanque]['racao_utilizada']
+            # Prepara dados de ração
+            feed_df_copy = feed_filtered.copy()
+            feed_df_copy['data_parsed'] = feed_df_copy['data'].apply(MetricsService.parse_date)
+            feed_df_copy['peso'] = pd.to_numeric(feed_df_copy['peso'], errors='coerce')
+            feed_df_copy = feed_df_copy.dropna(subset=['data_parsed', 'peso'])
 
-                    correlation_data.append({
-                        'tanque': f"Tanque {tanque}",
-                        'area_media': area_media,
-                        'racao_utilizada': racao_utilizada
-                    })
+            # Agrupa por tanque e data para calcular evolução temporal
+            correlation_data = {}
+
+            # Análise por tanque
+            for tanque in bio_df['tanque'].unique():
+                if tanque not in feed_df_copy['tanque'].values:
+                    continue
+
+                # Dados de biometria do tanque
+                tank_bio = bio_df[bio_df['tanque'] == tanque].copy()
+                tank_bio_grouped = tank_bio.groupby('data_parsed')['area'].mean().reset_index()
+                tank_bio_grouped = tank_bio_grouped.sort_values('data_parsed')
+
+                # Dados de ração do tanque
+                tank_feed = feed_df_copy[feed_df_copy['tanque'] == tanque].copy()
+                tank_feed_grouped = tank_feed.groupby('data_parsed')['peso'].sum().reset_index()
+                tank_feed_grouped = tank_feed_grouped.sort_values('data_parsed')
+
+                if len(tank_bio_grouped) < 2 or len(tank_feed_grouped) < 2:
+                    continue
+
+                # Calcula variação temporal
+                area_inicial = tank_bio_grouped['area'].iloc[0]
+                area_final = tank_bio_grouped['area'].iloc[-1]
+                variacao_area = area_final - area_inicial
+                percentual_crescimento = ((area_final - area_inicial) / area_inicial * 100) if area_inicial > 0 else 0
+
+                racao_total = tank_feed_grouped['peso'].sum()
+                racao_media_diaria = racao_total / len(tank_feed_grouped) if len(tank_feed_grouped) > 0 else 0
+
+                # Calcula eficiência (crescimento por kg de ração)
+                eficiencia = variacao_area / racao_total if racao_total > 0 else 0
+
+                correlation_data[str(tanque)] = {
+                    'area_inicial': round(area_inicial, 2),
+                    'area_final': round(area_final, 2),
+                    'variacao_area': round(variacao_area, 2),
+                    'percentual_crescimento': round(percentual_crescimento, 2),
+                    'racao_total': round(racao_total, 2),
+                    'racao_media_diaria': round(racao_media_diaria, 2),
+                    'eficiencia_crescimento': round(eficiencia, 4),
+                    'dias_periodo': len(tank_bio_grouped)
+                }
+
+            # Análise geral (todos os tanques)
+            if correlation_data:
+                # Calcula médias gerais
+                total_variacao_area = sum([data['variacao_area'] for data in correlation_data.values()])
+                total_racao = sum([data['racao_total'] for data in correlation_data.values()])
+                media_crescimento = sum([data['percentual_crescimento'] for data in correlation_data.values()]) / len(
+                    correlation_data)
+                eficiencia_geral = total_variacao_area / total_racao if total_racao > 0 else 0
+
+                correlation_data['geral'] = {
+                    'total_variacao_area': round(total_variacao_area, 2),
+                    'total_racao': round(total_racao, 2),
+                    'media_crescimento_percentual': round(media_crescimento, 2),
+                    'eficiencia_geral': round(eficiencia_geral, 4),
+                    'tanques_analisados': len([k for k in correlation_data.keys() if k != 'geral'])
+                }
 
             return correlation_data
 
         except Exception as e:
-            print(f"Erro ao calcular dados de correlação: {e}")
-            return []
+            print(f"Erro ao calcular correlação temporal: {e}")
+            return {}

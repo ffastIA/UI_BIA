@@ -2,6 +2,7 @@ import reflex as rx
 import pandas as pd
 from typing import Optional, List, Dict, Any
 from datetime import datetime, date
+import json
 
 from .services.sheets_service import SheetsService
 from .services.metrics_service import MetricsService
@@ -32,11 +33,18 @@ class State(rx.State):
     show_dashboard: bool = False
     start_date: str = ""
     end_date: str = ""
-    is_calculating: bool = False  # Novo estado para o botão de recálculo
+    is_calculating: bool = False
 
     # Métricas simplificadas para o State
     tank_metrics: List[List[str]] = []  # [tanque, peixes_medidos, area_media, racao_utilizada]
     general_metrics: List[str] = []  # [total_peixes, area_media_geral, total_racao]
+
+    # Dados para a tabela de correlação temporal
+    correlation_tank_data: List[
+        List[str]] = []  # [tanque, area_inicial, area_final, variacao, crescimento%, racao_total, eficiencia]
+    correlation_general_data: List[
+        str] = []  # [total_variacao, total_racao, media_crescimento, eficiencia_geral, tanques]
+    has_correlation_data: bool = False
 
     def load_sheets_data(self):
         """Carrega os dados das planilhas"""
@@ -129,28 +137,11 @@ class State(rx.State):
             return
 
         self.is_calculating = True
-
-        # Converte datas para exibição na mensagem
-        try:
-            start_display = self.start_date
-            end_display = self.end_date
-
-            # Se as datas estão no formato ISO, converte para exibição
-            if "-" in self.start_date:
-                start_obj = datetime.strptime(self.start_date, "%Y-%m-%d")
-                start_display = start_obj.strftime("%d/%m/%Y")
-
-            if "-" in self.end_date:
-                end_obj = datetime.strptime(self.end_date, "%Y-%m-%d")
-                end_display = end_obj.strftime("%d/%m/%Y")
-
-            self.load_message = f"Recalculando métricas para o período de {start_display} a {end_display}..."
-
-        except:
-            self.load_message = "Recalculando métricas para o período selecionado..."
+        self.load_message = "Recalculando métricas para o período selecionado..."
 
         try:
             self.calculate_metrics()
+            self.calculate_temporal_correlation()
 
             # Mensagem de sucesso com datas formatadas
             try:
@@ -216,10 +207,73 @@ class State(rx.State):
                     f"{feed_metrics['geral'].get('total_racao_utilizada', 0.0):.2f}"
                 ]
 
+            # Calcula correlação temporal
+            self.calculate_temporal_correlation()
+
         except Exception as e:
             print(f"Erro ao calcular métricas: {e}")
             self.tank_metrics = []
             self.general_metrics = []
+
+    def calculate_temporal_correlation(self):
+        """Calcula correlação temporal entre crescimento de área e ração"""
+        try:
+            if not self.has_data:
+                self.has_correlation_data = False
+                return
+
+            # Calcula correlação temporal
+            correlation_data = MetricsService.calculate_temporal_correlation(
+                self.biometria_df, self.racao_df, self.start_date, self.end_date
+            )
+
+            if not correlation_data:
+                self.has_correlation_data = False
+                self.correlation_tank_data = []
+                self.correlation_general_data = []
+                return
+
+            # Converte dados por tanque para lista simples
+            self.correlation_tank_data = []
+            for tanque, data in correlation_data.items():
+                if tanque == 'geral':
+                    continue
+
+                # Determina cor do crescimento baseado no valor
+                crescimento_val = data.get('percentual_crescimento', 0)
+                crescimento_str = f"{crescimento_val:.1f}%"
+
+                tank_row = [
+                    str(tanque),  # Tanque
+                    f"{data.get('area_inicial', 0):.2f}",  # Área Inicial
+                    f"{data.get('area_final', 0):.2f}",  # Área Final
+                    f"{data.get('variacao_area', 0):.2f}",  # Variação
+                    crescimento_str,  # Crescimento %
+                    f"{data.get('racao_total', 0):.2f}",  # Ração Total
+                    f"{data.get('eficiencia_crescimento', 0):.4f}"  # Eficiência
+                ]
+                self.correlation_tank_data.append(tank_row)
+
+            # Converte dados gerais para lista simples
+            if 'geral' in correlation_data:
+                geral = correlation_data['geral']
+                self.correlation_general_data = [
+                    f"{geral.get('total_variacao_area', 0):.2f}",  # Total Variação Área
+                    f"{geral.get('total_racao', 0):.2f}",  # Total Ração
+                    f"{geral.get('media_crescimento_percentual', 0):.1f}%",  # Média Crescimento %
+                    f"{geral.get('eficiencia_geral', 0):.4f}",  # Eficiência Geral
+                    str(geral.get('tanques_analisados', 0))  # Tanques Analisados
+                ]
+            else:
+                self.correlation_general_data = []
+
+            self.has_correlation_data = len(self.correlation_tank_data) > 0
+
+        except Exception as e:
+            print(f"Erro ao calcular correlação temporal: {e}")
+            self.has_correlation_data = False
+            self.correlation_tank_data = []
+            self.correlation_general_data = []
 
 
 def create_metric_card(title: str, value: str, icon: str) -> rx.Component:
@@ -227,24 +281,207 @@ def create_metric_card(title: str, value: str, icon: str) -> rx.Component:
     return rx.box(
         rx.vstack(
             rx.hstack(
-                rx.icon(icon, size=16, color="black"),  # Ícone menor e preto
+                rx.icon(icon, size=16, color="black"),
                 rx.text(
                     title,
-                    size="1",  # Fonte menor (era "2")
+                    size="1",
                     weight="bold",
-                    color="green"  # Cor preta
+                    color="black"
                 ),
                 spacing="2",
                 align="center"
             ),
             rx.text(
                 value,
-                size="4",  # Fonte menor (era "6")
+                size="4",
                 weight="bold",
-                color="blue"  # Cor azul
+                color="black"
             ),
             spacing="2",
             align="start"
+        ),
+        padding="1rem",
+        border="1px solid",
+        border_color=rx.color("gray", 4),
+        border_radius="8px",
+        bg=rx.color("gray", 1),
+        width="100%"
+    )
+
+
+def create_correlation_table() -> rx.Component:
+    """Cria a tabela de correlação temporal"""
+    return rx.box(
+        rx.vstack(
+            rx.heading(
+                "📈 Correlação Temporal: Crescimento da Área vs Ração Utilizada",
+                size="4",
+                color="black"
+            ),
+            rx.cond(
+                State.has_correlation_data,
+                rx.vstack(
+                    # Explicação da análise
+                    rx.box(
+                        rx.vstack(
+                            rx.text(
+                                "📊 Análise de Correlação Temporal",
+                                size="2",
+                                weight="bold",
+                                color="black"
+                            ),
+                            rx.text(
+                                "Esta análise mostra a relação entre o crescimento da área dos peixes ao longo do tempo e a quantidade de ração utilizada no período selecionado.",
+                                color="black",
+                                size="1"
+                            ),
+                            spacing="2"
+                        ),
+                        padding="1rem",
+                        border="1px solid",
+                        border_color=rx.color("blue", 4),
+                        border_radius="8px",
+                        bg=rx.color("blue", 1),
+                        width="100%"
+                    ),
+
+                    # Tabela por tanque
+                    rx.vstack(
+                        rx.heading("📋 Análise por Tanque", size="3", color="black"),
+                        rx.box(
+                            rx.table.root(
+                                rx.table.header(
+                                    rx.table.row(
+                                        rx.table.column_header_cell("Tanque", style={"font_weight": "bold"}),
+                                        rx.table.column_header_cell("Área Inicial", style={"font_weight": "bold"}),
+                                        rx.table.column_header_cell("Área Final", style={"font_weight": "bold"}),
+                                        rx.table.column_header_cell("Variação", style={"font_weight": "bold"}),
+                                        rx.table.column_header_cell("Crescimento %", style={"font_weight": "bold"}),
+                                        rx.table.column_header_cell("Ração Total (kg)", style={"font_weight": "bold"}),
+                                        rx.table.column_header_cell("Eficiência*", style={"font_weight": "bold"})
+                                    )
+                                ),
+                                rx.table.body(
+                                    rx.foreach(
+                                        State.correlation_tank_data,
+                                        lambda row: rx.table.row(
+                                            rx.table.cell(f"Tanque {row[0]}",
+                                                          style={"font_weight": "bold", "color": "black"}),
+                                            rx.table.cell(row[1], style={"color": "black"}),
+                                            rx.table.cell(row[2], style={"color": "black"}),
+                                            rx.table.cell(row[3], style={"color": "black"}),
+                                            # Corrigido: usando rx.cond() em vez do operador 'in'
+                                            rx.table.cell(
+                                                row[4],
+                                                style=rx.cond(
+                                                    row[4].contains("-"),
+                                                    {"color": "red"},
+                                                    {"color": "green"}
+                                                )
+                                            ),
+                                            rx.table.cell(row[5], style={"color": "black"}),
+                                            rx.table.cell(row[6], style={"color": "black"})
+                                        )
+                                    )
+                                ),
+                                variant="surface",
+                                size="1"
+                            ),
+                            width="100%",
+                            overflow_x="auto",
+                            border="1px solid",
+                            border_color=rx.color("gray", 4),
+                            border_radius="8px"
+                        ),
+                        spacing="3",
+                        width="100%"
+                    ),
+
+                    # Resumo geral
+                    rx.cond(
+                        State.correlation_general_data.length() > 0,
+                        rx.vstack(
+                            rx.heading("📊 Resumo Geral do Período", size="3", color="black"),
+                            rx.hstack(
+                                create_metric_card("Variação Total da Área", State.correlation_general_data[0],
+                                                   "trending-up"),
+                                create_metric_card("Ração Total Utilizada", f"{State.correlation_general_data[1]} kg",
+                                                   "package"),
+                                create_metric_card("Crescimento Médio", State.correlation_general_data[2], "percent"),
+                                create_metric_card("Eficiência Geral", State.correlation_general_data[3], "zap"),
+                                create_metric_card("Tanques Analisados", State.correlation_general_data[4], "database"),
+                                spacing="3",
+                                width="100%",
+                                wrap="wrap"
+                            ),
+                            spacing="3",
+                            width="100%"
+                        )
+                    ),
+
+                    # Legenda
+                    rx.box(
+                        rx.vstack(
+                            rx.text(
+                                "📖 Legenda e Interpretação",
+                                size="2",
+                                weight="bold",
+                                color="black"
+                            ),
+                            rx.vstack(
+                                rx.text("• Área Inicial/Final: Área média dos peixes no início e fim do período",
+                                        size="1", color="black"),
+                                rx.text("• Variação: Diferença entre área final e inicial", size="1", color="black"),
+                                rx.text("• Crescimento %: Percentual de crescimento da área no período", size="1",
+                                        color="black"),
+                                rx.text("• Ração Total: Quantidade total de ração utilizada no período", size="1",
+                                        color="black"),
+                                rx.text("• Eficiência*: Variação de área por kg de ração (maior = mais eficiente)",
+                                        size="1", color="black"),
+                                rx.text("• Cores: Verde = crescimento positivo, Vermelho = crescimento negativo",
+                                        size="1", color="black"),
+                                spacing="1",
+                                align="start"
+                            ),
+                            spacing="2"
+                        ),
+                        padding="1rem",
+                        border="1px solid",
+                        border_color=rx.color("gray", 4),
+                        border_radius="8px",
+                        bg=rx.color("gray", 1),
+                        width="100%"
+                    ),
+
+                    spacing="4",
+                    width="100%"
+                ),
+                rx.vstack(
+                    rx.text(
+                        "⚠️ Dados insuficientes para análise de correlação temporal.",
+                        color="black",
+                        size="2",
+                        weight="bold"
+                    ),
+                    rx.text(
+                        "Para visualizar a correlação temporal, certifique-se de que:",
+                        color="black",
+                        size="2"
+                    ),
+                    rx.vstack(
+                        rx.text("• Existem dados de biometria e ração no período selecionado", size="1", color="black"),
+                        rx.text("• O período contém pelo menos 2 medições por tanque", size="1", color="black"),
+                        rx.text("• Os tanques possuem dados válidos de área e ração", size="1", color="black"),
+                        rx.text("• As datas de início e fim estão definidas", size="1", color="black"),
+                        spacing="1",
+                        align="start",
+                        padding_left="1rem"
+                    ),
+                    spacing="2",
+                    align="start"
+                )
+            ),
+            spacing="3"
         ),
         padding="1rem",
         border="1px solid",
@@ -262,7 +499,7 @@ def create_dashboard() -> rx.Component:
         rx.heading(
             "📊 Dashboard de Métricas",
             size="7",
-            color="black"  # Cor preta
+            color="black"
         ),
 
         # Filtros de Data com Botão de Recálculo
@@ -270,17 +507,17 @@ def create_dashboard() -> rx.Component:
             rx.vstack(
                 rx.text(
                     "Filtros de Período",
-                    size="3",  # Fonte menor (era "4")
+                    size="3",
                     weight="bold",
-                    color="black"  # Cor preta
+                    color="black"
                 ),
                 rx.hstack(
                     rx.vstack(
                         rx.text(
                             "Data Inicial",
-                            size="1",  # Fonte menor (era "2")
+                            size="1",
                             weight="bold",
-                            color="black"  # Cor preta
+                            color="black"
                         ),
                         rx.input(
                             placeholder="dd/mm/aaaa",
@@ -295,9 +532,9 @@ def create_dashboard() -> rx.Component:
                     rx.vstack(
                         rx.text(
                             "Data Final",
-                            size="1",  # Fonte menor (era "2")
+                            size="1",
                             weight="bold",
-                            color="black"  # Cor preta
+                            color="black"
                         ),
                         rx.input(
                             placeholder="dd/mm/aaaa",
@@ -361,16 +598,16 @@ def create_dashboard() -> rx.Component:
             rx.vstack(
                 rx.heading(
                     "Métricas por Tanque",
-                    size="4",  # Fonte menor (era "5")
-                    color="black"  # Cor preta
+                    size="4",
+                    color="black"
                 ),
                 rx.foreach(
                     State.tank_metrics,
                     lambda tank_row: rx.vstack(
                         rx.heading(
                             f"Tanque {tank_row[0]}",
-                            size="3",  # Fonte menor (era "4")
-                            color="black"  # Cor preta
+                            size="3",
+                            color="black"
                         ),
                         rx.hstack(
                             create_metric_card("Peixes Medidos", tank_row[1], "fish"),
@@ -394,8 +631,8 @@ def create_dashboard() -> rx.Component:
             rx.vstack(
                 rx.heading(
                     "Métricas Gerais",
-                    size="4",  # Fonte menor (era "5")
-                    color="black"  # Cor preta
+                    size="4",
+                    color="black"
                 ),
                 rx.hstack(
                     create_metric_card("Total Peixes Medidos", State.general_metrics[0], "fish"),
@@ -409,29 +646,8 @@ def create_dashboard() -> rx.Component:
             )
         ),
 
-        # Placeholder para gráfico de correlação
-        rx.box(
-            rx.vstack(
-                rx.heading(
-                    "Correlação: Área Média vs Ração por Tanque",
-                    size="4",  # Fonte menor (era "5")
-                    color="black"  # Cor preta
-                ),
-                rx.text(
-                    "Gráfico de correlação será implementado na próxima versão",
-                    color="black",  # Cor preta
-                    size="2",  # Fonte menor
-                    style={"font_style": "italic"}
-                ),
-                spacing="3"
-            ),
-            padding="1rem",
-            border="1px solid",
-            border_color=rx.color("gray", 4),
-            border_radius="8px",
-            bg=rx.color("gray", 1),
-            width="100%"
-        ),
+        # Tabela de Correlação Temporal
+        create_correlation_table(),
 
         spacing="6",
         width="100%"
