@@ -129,11 +129,46 @@ class State(rx.State):
             return
 
         self.is_calculating = True
-        self.load_message = "Recalculando métricas para o período selecionado..."
+
+        # Converte datas para exibição na mensagem
+        try:
+            start_display = self.start_date
+            end_display = self.end_date
+
+            # Se as datas estão no formato ISO, converte para exibição
+            if "-" in self.start_date:
+                start_obj = datetime.strptime(self.start_date, "%Y-%m-%d")
+                start_display = start_obj.strftime("%d/%m/%Y")
+
+            if "-" in self.end_date:
+                end_obj = datetime.strptime(self.end_date, "%Y-%m-%d")
+                end_display = end_obj.strftime("%d/%m/%Y")
+
+            self.load_message = f"Recalculando métricas para o período de {start_display} a {end_display}..."
+
+        except:
+            self.load_message = "Recalculando métricas para o período selecionado..."
 
         try:
             self.calculate_metrics()
-            self.load_message = f"Métricas recalculadas para o período de {self.start_date} a {self.end_date}"
+
+            # Mensagem de sucesso com datas formatadas
+            try:
+                start_display = self.start_date
+                end_display = self.end_date
+
+                if "-" in self.start_date:
+                    start_obj = datetime.strptime(self.start_date, "%Y-%m-%d")
+                    start_display = start_obj.strftime("%d/%m/%Y")
+
+                if "-" in self.end_date:
+                    end_obj = datetime.strptime(self.end_date, "%Y-%m-%d")
+                    end_display = end_obj.strftime("%d/%m/%Y")
+
+                self.load_message = f"Métricas recalculadas para o período de {start_display} a {end_display}"
+            except:
+                self.load_message = "Métricas recalculadas com sucesso!"
+
         except Exception as e:
             self.load_message = f"Erro ao recalcular métricas: {str(e)}"
         finally:
@@ -197,7 +232,7 @@ def create_metric_card(title: str, value: str, icon: str) -> rx.Component:
                     title,
                     size="1",  # Fonte menor (era "2")
                     weight="bold",
-                    color="black"  # Cor preta
+                    color="green"  # Cor preta
                 ),
                 spacing="2",
                 align="center"
@@ -206,7 +241,7 @@ def create_metric_card(title: str, value: str, icon: str) -> rx.Component:
                 value,
                 size="4",  # Fonte menor (era "6")
                 weight="bold",
-                color="black"  # Cor preta
+                color="blue"  # Cor azul
             ),
             spacing="2",
             align="start"
